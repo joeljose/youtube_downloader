@@ -11,6 +11,8 @@ cd youtube_downloader
 ./yt download https://youtube.com/watch?v=xxxxx
 ```
 
+`setup.sh` downloads both **yt-dlp** and **deno** (required for YouTube JS extraction) into `bin/`. Nothing is installed system-wide.
+
 ## Prerequisites
 
 - **ffmpeg** — required for merging formats and audio extraction
@@ -21,7 +23,8 @@ cd youtube_downloader
   # macOS
   brew install ffmpeg
   ```
-- **curl** or **wget** — for downloading the yt-dlp binary
+- **curl** or **wget** — for downloading binaries
+- **unzip** — for extracting deno
 
 ## Commands
 
@@ -35,12 +38,14 @@ cd youtube_downloader
 
 ## Options
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `-o, --output <dir>` | Output directory | `./downloads` |
-| `-f, --format <preset>` | Quality: `720p`, `1080p`, `4k`, `best` | `best` |
-| `-v, --verbose` | Show full yt-dlp output | off |
-| `--` | Pass remaining flags directly to yt-dlp | — |
+| Flag | Description | Default | Commands |
+|------|-------------|---------|----------|
+| `-o, --output <dir>` | Output directory | `./downloads` | all |
+| `-f, --format <preset>` | Quality: `720p`, `1080p`, `4k`, `best` | `best` | download |
+| `-t, --duration <secs>` | Recording duration in seconds | unlimited | live |
+| `--no-audio` | Download video only, skip audio | off | download, live |
+| `-v, --verbose` | Show full yt-dlp output | off | all |
+| `--` | Pass remaining flags directly to yt-dlp | — | all |
 
 ## Examples
 
@@ -51,16 +56,22 @@ yt download https://youtube.com/watch?v=xxxxx
 # Download in 720p
 yt download https://youtube.com/watch?v=xxxxx -f 720p
 
-# Extract audio
+# Download video only (no audio)
+yt download https://youtube.com/watch?v=xxxxx --no-audio
+
+# Extract audio as MP3
 yt audio https://youtube.com/watch?v=xxxxx
 
 # Save to custom directory
 yt download https://youtube.com/watch?v=xxxxx -o ~/videos
 
-# Record a live stream
+# Record 10 minutes of a live stream (video only)
+yt live https://youtube.com/watch?v=xxxxx -t 600 --no-audio
+
+# Record a live stream indefinitely (Ctrl+C to stop)
 yt live https://youtube.com/watch?v=xxxxx
 
-# Check available formats
+# Check available formats before downloading
 yt info https://youtube.com/watch?v=xxxxx
 
 # Pass extra flags to yt-dlp
@@ -69,6 +80,13 @@ yt download https://youtube.com/watch?v=xxxxx -- --cookies-from-browser chrome
 # Update yt-dlp when downloads break
 yt update
 ```
+
+## How it works
+
+- `setup.sh` downloads **yt-dlp** and **deno** binaries into `bin/` (gitignored)
+- `yt` is a shell script that translates simple commands into yt-dlp flags
+- Live streams use **ffmpeg as the downloader** for clean duration limiting and proper file finalization
+- Output filenames include a timestamp so re-downloading never overwrites
 
 ## Add to PATH
 
