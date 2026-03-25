@@ -95,7 +95,7 @@ cmd_download() {
     fi
 
     "$YT_DLP" "${format_flag[@]}" "${quiet_flag[@]}" \
-        -o "$OUTPUT_DIR/%(title)s.%(ext)s" \
+        -o "$OUTPUT_DIR/%(title)s %(upload_date>%Y-%m-%d)s %(epoch>%H%M%S)s.%(ext)s" \
         "${passthrough[@]+"${passthrough[@]}"}" \
         "$url"
 }
@@ -122,7 +122,7 @@ cmd_audio() {
     fi
 
     "$YT_DLP" -x --audio-format mp3 "${quiet_flag[@]}" \
-        -o "$OUTPUT_DIR/%(title)s.%(ext)s" \
+        -o "$OUTPUT_DIR/%(title)s %(upload_date>%Y-%m-%d)s %(epoch>%H%M%S)s.%(ext)s" \
         "${passthrough[@]+"${passthrough[@]}"}" \
         "$url"
 }
@@ -168,7 +168,7 @@ cmd_live() {
         "${format_flag[@]}" \
         "${downloader_flags[@]}" \
         "${quiet_flag[@]}" \
-        -o "$OUTPUT_DIR/%(title)s.%(ext)s" \
+        -o "$OUTPUT_DIR/%(title)s %(upload_date>%Y-%m-%d)s %(epoch>%H%M%S)s.%(ext)s" \
         "${passthrough[@]+"${passthrough[@]}"}" \
         "$url"
 }
