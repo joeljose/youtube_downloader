@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+YT_DLP="$SCRIPT_DIR/bin/yt-dlp"
+OUTPUT_DIR="./downloads"
+
+# ── Help ─────────────────────────────────────────────────────────────────────
+usage() {
+    cat <<'HELP'
+yt — simple YouTube downloader
+
+Usage:
+    yt download <url>       Download video (best quality, mp4)
+    yt audio <url>          Extract audio as MP3
+    yt live <url>           Record a live stream
+    yt info <url>           Show available formats
+    yt update               Update yt-dlp to latest version
+
+Options:
+    -o, --output <dir>      Output directory (default: ./downloads)
+    -f, --format <preset>   Quality: 720p, 1080p, 4k, best (default: best)
+    -v, --verbose           Show full yt-dlp output
+    --                      Pass remaining flags to yt-dlp
+    -h, --help              Show this help
+
+Examples:
+    yt download https://youtube.com/watch?v=xxxxx
+    yt audio https://youtube.com/watch?v=xxxxx -o ~/music
+    yt download https://youtube.com/watch?v=xxxxx -f 720p
+    yt download https://youtube.com/watch?v=xxxxx -- --cookies-from-browser chrome
+HELP
+}
+
+# ── Preflight checks ─────────────────────────────────────────────────────────
+check_ytdlp() {
+    if [ ! -x "$YT_DLP" ]; then
+        echo "ERROR: yt-dlp not found. Run ./setup.sh first." >&2
+        exit 1
+    fi
+}
+
+check_ffmpeg() {
+    if ! command -v ffmpeg &>/dev/null; then
+        echo "WARN: ffmpeg not found — merge/audio extraction may fail." >&2
+        echo "      Install: sudo apt install ffmpeg  (or brew install ffmpeg)" >&2
+    fi
+}
+
+# ── Commands ─────────────────────────────────────────────────────────────────
+cmd_download() {
+    local url="$1"; shift
+    local format_flag=("-f" "bv*+ba/b" "--merge-output-format" "mp4")
+    local verbose=false
+    local passthrough=()
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -o|--output) OUTPUT_DIR="$2"; shift 2 ;;
+            -f|--format)
+                case "$2" in
+                    720p)  format_flag=("-f" "bv*[height<=720]+ba/b[height<=720]" "--merge-output-format" "mp4") ;;
+                    1080p) format_flag=("-f" "bv*[height<=1080]+ba/b[height<=1080]" "--merge-output-format" "mp4") ;;
+                    4k)    format_flag=("-f" "bv*[height<=2160]+ba/b[height<=2160]" "--merge-output-format" "mp4") ;;
+                    best)  format_flag=("-f" "bv*+ba/b" "--merge-output-format" "mp4") ;;
+                    *)     echo "ERROR: Unknown format '$2'. Use: 720p, 1080p, 4k, best" >&2; exit 1 ;;
+                esac
+                shift 2
+                ;;
+            -v|--verbose) verbose=true; shift ;;
+            --) shift; passthrough=("$@"); break ;;
+            *)  echo "ERROR: Unknown option '$1'" >&2; usage; exit 1 ;;
+        esac
+    done
+
+    mkdir -p "$OUTPUT_DIR"
+
+    local quiet_flag=()
+    if [ "$verbose" = false ]; then
+        quiet_flag=("--progress" "--newline")
+    fi
+
+    "$YT_DLP" "${format_flag[@]}" "${quiet_flag[@]}" \
+        -o "$OUTPUT_DIR/%(title)s.%(ext)s" \
+        "${passthrough[@]+"${passthrough[@]}"}" \
+        "$url"
+}
+
+cmd_audio() {
+    local url="$1"; shift
+    local verbose=false
+    local passthrough=()
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -o|--output) OUTPUT_DIR="$2"; shift 2 ;;
+            -v|--verbose) verbose=true; shift ;;
+            --) shift; passthrough=("$@"); break ;;
+            *)  echo "ERROR: Unknown option '$1'" >&2; usage; exit 1 ;;
+        esac
+    done
+
+    mkdir -p "$OUTPUT_DIR"
+
+    local quiet_flag=()
+    if [ "$verbose" = false ]; then
+        quiet_flag=("--progress" "--newline")
+    fi
+
+    "$YT_DLP" -x --audio-format mp3 "${quiet_flag[@]}" \
+        -o "$OUTPUT_DIR/%(title)s.%(ext)s" \
+        "${passthrough[@]+"${passthrough[@]}"}" \
+        "$url"
+}
+
+cmd_live() {
+    local url="$1"; shift
+    local verbose=false
+    local passthrough=()
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -o|--output) OUTPUT_DIR="$2"; shift 2 ;;
+            -v|--verbose) verbose=true; shift ;;
+            --) shift; passthrough=("$@"); break ;;
+            *)  echo "ERROR: Unknown option '$1'" >&2; usage; exit 1 ;;
+        esac
+    done
+
+    mkdir -p "$OUTPUT_DIR"
+
+    local quiet_flag=()
+    if [ "$verbose" = false ]; then
+        quiet_flag=("--progress" "--newline")
+    fi
+
+    "$YT_DLP" --live-from-start --wait-for-video 5 "${quiet_flag[@]}" \
+        -o "$OUTPUT_DIR/%(title)s.%(ext)s" \
+        "${passthrough[@]+"${passthrough[@]}"}" \
+        "$url"
+}
+
+cmd_info() {
+    local url="$1"
+    "$YT_DLP" -F "$url"
+}
+
+cmd_update() {
+    local old_version
+    old_version="$("$YT_DLP" --version 2>/dev/null || echo "unknown")"
+    echo "Current version: $old_version"
+    echo "==> Updating yt-dlp..."
+    "$SCRIPT_DIR/setup.sh"
+    local new_version
+    new_version="$("$YT_DLP" --version)"
+    if [ "$old_version" = "$new_version" ]; then
+        echo "Already up to date: $new_version"
+    else
+        echo "Updated: $old_version → $new_version"
+    fi
+}
+
+# ── Main ─────────────────────────────────────────────────────────────────────
+if [ $# -eq 0 ]; then
+    usage
+    exit 0
+fi
+
+case "$1" in
+    -h|--help) usage; exit 0 ;;
+    download|audio|live|info)
+        check_ytdlp
+        check_ffmpeg
+        COMMAND="$1"; shift
+        if [ $# -eq 0 ]; then
+            echo "ERROR: URL required. Usage: yt $COMMAND <url>" >&2
+            exit 1
+        fi
+        "cmd_$COMMAND" "$@"
+        ;;
+    update)
+        check_ytdlp
+        cmd_update
+        ;;
+    *)
+        echo "ERROR: Unknown command '$1'" >&2
+        usage
+        exit 1
+        ;;
+esac
