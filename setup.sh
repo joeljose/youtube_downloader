@@ -68,13 +68,46 @@ echo "==> Downloading yt-dlp from $RELEASE_URL"
 $DOWNLOAD "$YT_DLP" "$RELEASE_URL"
 chmod +x "$YT_DLP"
 
-# Verify
+# Verify yt-dlp
 if "$YT_DLP" --version &>/dev/null; then
     echo "[ok] yt-dlp installed: $("$YT_DLP" --version)"
 else
     echo "ERROR: yt-dlp binary failed to run."
     rm -f "$YT_DLP"
     exit 1
+fi
+
+# Download deno (required by yt-dlp for YouTube JS extraction)
+DENO="$BIN_DIR/deno"
+if [ -x "$DENO" ]; then
+    echo "[ok] deno already installed: $("$DENO" --version 2>&1 | head -1)"
+else
+    echo "==> Downloading deno (required for YouTube extraction)..."
+    local_os="$(uname -s)"
+    local_arch="$(uname -m)"
+    DENO_TARGET=""
+    case "${local_os}-${local_arch}" in
+        Linux-x86_64)   DENO_TARGET="x86_64-unknown-linux-gnu" ;;
+        Linux-aarch64)  DENO_TARGET="aarch64-unknown-linux-gnu" ;;
+        Darwin-x86_64)  DENO_TARGET="x86_64-apple-darwin" ;;
+        Darwin-arm64)   DENO_TARGET="aarch64-apple-darwin" ;;
+    esac
+
+    if [ -n "$DENO_TARGET" ]; then
+        DENO_URL="https://github.com/denoland/deno/releases/latest/download/deno-${DENO_TARGET}.zip"
+        DENO_ZIP="$BIN_DIR/deno.zip"
+        $DOWNLOAD "$DENO_ZIP" "$DENO_URL"
+        unzip -o -q "$DENO_ZIP" -d "$BIN_DIR"
+        rm -f "$DENO_ZIP"
+        chmod +x "$DENO"
+        if "$DENO" --version &>/dev/null; then
+            echo "[ok] deno installed: $("$DENO" --version 2>&1 | head -1)"
+        else
+            echo "[WARN] deno binary failed to run — YouTube extraction may be limited."
+        fi
+    else
+        echo "[WARN] Cannot download deno for ${local_os}-${local_arch} — YouTube extraction may be limited."
+    fi
 fi
 
 echo ""

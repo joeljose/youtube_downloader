@@ -5,6 +5,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 YT_DLP="$SCRIPT_DIR/bin/yt-dlp"
 OUTPUT_DIR="./downloads"
 
+# Make deno available to yt-dlp if it exists in our bin/
+if [ -x "$SCRIPT_DIR/bin/deno" ]; then
+    export PATH="$SCRIPT_DIR/bin:$PATH"
+fi
+
 # ── Help ─────────────────────────────────────────────────────────────────────
 usage() {
     cat <<'HELP'
@@ -20,6 +25,8 @@ Usage:
 Options:
     -o, --output <dir>      Output directory (default: ./downloads)
     -f, --format <preset>   Quality: 720p, 1080p, 4k, best (default: best)
+    -t, --duration <secs>   Recording duration in seconds (live only)
+    --no-audio              Download video only, skip audio
     -v, --verbose           Show full yt-dlp output
     --                      Pass remaining flags to yt-dlp
     -h, --help              Show this help
@@ -28,6 +35,7 @@ Examples:
     yt download https://youtube.com/watch?v=xxxxx
     yt audio https://youtube.com/watch?v=xxxxx -o ~/music
     yt download https://youtube.com/watch?v=xxxxx -f 720p
+    yt live https://youtube.com/watch?v=xxxxx -t 600 --no-audio
     yt download https://youtube.com/watch?v=xxxxx -- --cookies-from-browser chrome
 HELP
 }
@@ -52,11 +60,13 @@ cmd_download() {
     local url="$1"; shift
     local format_flag=("-f" "bv*+ba/b" "--merge-output-format" "mp4")
     local verbose=false
+    local no_audio=false
     local passthrough=()
 
     while [ $# -gt 0 ]; do
         case "$1" in
             -o|--output) OUTPUT_DIR="$2"; shift 2 ;;
+            --no-audio) no_audio=true; shift ;;
             -f|--format)
                 case "$2" in
                     720p)  format_flag=("-f" "bv*[height<=720]+ba/b[height<=720]" "--merge-output-format" "mp4") ;;
@@ -72,6 +82,10 @@ cmd_download() {
             *)  echo "ERROR: Unknown option '$1'" >&2; usage; exit 1 ;;
         esac
     done
+
+    if [ "$no_audio" = true ]; then
+        format_flag=("-f" "bv*")
+    fi
 
     mkdir -p "$OUTPUT_DIR"
 
@@ -116,11 +130,15 @@ cmd_audio() {
 cmd_live() {
     local url="$1"; shift
     local verbose=false
+    local duration=""
+    local no_audio=false
     local passthrough=()
 
     while [ $# -gt 0 ]; do
         case "$1" in
             -o|--output) OUTPUT_DIR="$2"; shift 2 ;;
+            -t|--duration) duration="$2"; shift 2 ;;
+            --no-audio) no_audio=true; shift ;;
             -v|--verbose) verbose=true; shift ;;
             --) shift; passthrough=("$@"); break ;;
             *)  echo "ERROR: Unknown option '$1'" >&2; usage; exit 1 ;;
@@ -134,7 +152,22 @@ cmd_live() {
         quiet_flag=("--progress" "--newline")
     fi
 
-    "$YT_DLP" --live-from-start --wait-for-video 5 "${quiet_flag[@]}" \
+    local format_flag=("-f" "bv*+ba/b" "--merge-output-format" "mp4")
+    if [ "$no_audio" = true ]; then
+        format_flag=("-f" "bv*")
+    fi
+
+    # Use ffmpeg as downloader for live streams — it handles duration
+    # limiting cleanly and produces finalized output files
+    local downloader_flags=("--downloader" "ffmpeg" "--hls-use-mpegts")
+    if [ -n "$duration" ]; then
+        downloader_flags+=("--downloader-args" "ffmpeg:-t $duration")
+    fi
+
+    "$YT_DLP" --no-live-from-start --wait-for-video 5 \
+        "${format_flag[@]}" \
+        "${downloader_flags[@]}" \
+        "${quiet_flag[@]}" \
         -o "$OUTPUT_DIR/%(title)s.%(ext)s" \
         "${passthrough[@]+"${passthrough[@]}"}" \
         "$url"
